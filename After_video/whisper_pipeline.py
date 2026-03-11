@@ -10,6 +10,13 @@ evaluates with LLM, and maintains two files per candidate:
 import warnings
 warnings.filterwarnings("ignore")
 
+import sys
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 import json
 import os
 import time
@@ -36,17 +43,19 @@ except ImportError:
     print("❌ Watchdog not installed. Run: pip install watchdog")
     exit(1)
 
-# Load environment
-load_dotenv(dotenv_path=r"D:\IS Project\video-interview-platform\backend\.env")
+# Load environment (repo-relative so it works across machines)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ENV = REPO_ROOT / "video-interview-platform" / "backend" / ".env"
+load_dotenv(dotenv_path=str(BACKEND_ENV))
 
 # Configuration
-UPLOADS_FOLDER = r"D:\IS Project\video-interview-platform\backend\uploads"
+UPLOADS_FOLDER = str(REPO_ROOT / "video-interview-platform" / "backend" / "uploads")
 WHISPER_MODEL_SIZE = "base"  # Options: tiny, base, small, medium, large
 
 # OpenRouter Client for LLM evaluation
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key=os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"),
 )
 
 # Store loaded questions per candidate

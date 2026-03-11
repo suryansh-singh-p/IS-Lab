@@ -23,6 +23,24 @@ const SEED_QUESTIONS = [
     "Is there anything about this job description that makes you nervous?"
 ];
 
+// Parse standard CLOUDINARY_URL, e.g.
+// CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
+let cloudinaryCloudName = null;
+let cloudinaryApiKey = null;
+let cloudinaryApiSecret = null;
+
+if (process.env.CLOUDINARY_URL) {
+    try {
+        const raw = process.env.CLOUDINARY_URL.replace(/^cloudinary:\/\//, 'http://');
+        const url = new URL(raw);
+        cloudinaryCloudName = url.hostname || null;
+        cloudinaryApiKey = url.username || null;
+        cloudinaryApiSecret = url.password || null;
+    } catch (e) {
+        console.error('Failed to parse CLOUDINARY_URL:', e.message);
+    }
+}
+
 module.exports = {
     port: process.env.PORT || 5000,
     databaseUrl: process.env.DATABASE_URL || null,
@@ -36,6 +54,15 @@ module.exports = {
     evaluationsDir,
     uploadWatcherEnabled: process.env.UPLOAD_WATCHER !== 'false',
     SEED_QUESTIONS,
+    // Cloudinary configuration for signed direct uploads (from CLOUDINARY_URL).
+    cloudinaryCloudName,
+    cloudinaryApiKey,
+    cloudinaryApiSecret,
+    cloudinaryUploadFolder: process.env.CLOUDINARY_UPLOAD_FOLDER || 'interview-videos',
+    cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || null,
+    // When true, /upload expects multipart video and writes to local disk.
+    // When false, /upload expects JSON metadata with a Cloudinary video URL.
+    useLocalVideoStorage: process.env.USE_LOCAL_VIDEO_STORAGE !== 'false',
     cors: {
         origin: ['http://localhost:5173', 'http://localhost:3000'],
         methods: ['GET', 'POST'],

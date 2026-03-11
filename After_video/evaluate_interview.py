@@ -9,10 +9,20 @@ Interview Answer Evaluation Pipeline
 import warnings
 warnings.filterwarnings("ignore")
 
+import sys
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 import json
 import os
 import time
 from pathlib import Path
+from typing import Optional
+
+import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -32,13 +42,15 @@ try:
 except ImportError:
     WATCHDOG_AVAILABLE = False
 
-# Load environment variables
-load_dotenv(dotenv_path=r"D:\IS Project\video-interview-platform\backend\.env")
+# Load environment variables (repo-relative so it works across machines)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ENV = REPO_ROOT / "video-interview-platform" / "backend" / ".env"
+load_dotenv(dotenv_path=str(BACKEND_ENV))
 
 # Configuration
-UPLOADS_FOLDER = r"D:\IS Project\video-interview-platform\backend\uploads"
-OUTPUT_FOLDER = r"D:\IS Project\After_video\evaluations"
-QUESTIONS_FILE = r"D:\IS Project\After_video\current_questions.json"
+UPLOADS_FOLDER = str(REPO_ROOT / "video-interview-platform" / "backend" / "uploads")
+OUTPUT_FOLDER = str(REPO_ROOT / "After_video" / "evaluations")
+QUESTIONS_FILE = str(REPO_ROOT / "After_video" / "current_questions.json")
 
 # Create output folder if not exists
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -46,7 +58,7 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 # OpenRouter Client
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key=os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"),
 )
 
 def transcribe_video(video_path):
@@ -84,6 +96,37 @@ def transcribe_video(video_path):
         import traceback
         traceback.print_exc()
         return None, None
+
+
+def download_video_to_temp(url: str) -> Optional[str]:
+    """Download a remote video (e.g. Cloudinary secure_url) to a temporary file.
+
+    Returns the local file path, or None on error.
+    """
+    import tempfile
+
+    print(f"\n🌐 Downloading video from URL:\n   {url}")
+    try:
+        with requests.get(url, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            suffix = ".webm"
+            ct = r.headers.get("Content-Type") or ""
+            if "mp4" in ct:
+                suffix = ".mp4"
+            fd, temp_path = tempfile.mkstemp(prefix="cloud-video-", suffix=suffix)
+            bytes_written = 0
+            with os.fdopen(fd, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    bytes_written += len(chunk)
+        mb = bytes_written / (1024 * 1024)
+        print(f"   ✅ Download complete: {mb:.2f} MB → {temp_path}")
+        return temp_path
+    except Exception as e:
+        print(f"   ❌ Download error: {e}")
+        return None
 
 
 def evaluate_answer(question, answer_transcript):
@@ -200,6 +243,42 @@ def process_video_file(video_path, question_text="Tell me about yourself"):
     print_evaluation_summary(evaluation)
     
     return result
+
+
+def evaluate_cloud_video(video_url: str, question_text: str = "Tell me about yourself") -> Optional[dict]:
+    """End-to-end evaluation for a single remote (Cloudinary) video URL.
+
+    1) Download video to temp file
+    2) Transcribe with Whisper (local)
+    3) Evaluate with LLM
+    """
+    local_path = download_video_to_temp(video_url)
+    if not local_path:
+        return None
+
+    try:
+        transcript, segments = transcribe_video(local_path)
+        if not transcript:
+            print("❌ Empty transcript from downloaded video, skipping evaluation.")
+            return None
+
+        evaluation = evaluate_answer(question_text, transcript)
+        result = {
+            "video_url": video_url,
+            "question": question_text,
+            "transcript": transcript,
+            "segments": segments,
+            "evaluation": evaluation,
+            "processed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        print("\n✅ Cloud video evaluation complete.")
+        print_evaluation_summary(evaluation)
+        return result
+    finally:
+        try:
+            os.remove(local_path)
+        except Exception:
+            pass
 
 
 def print_evaluation_summary(evaluation):

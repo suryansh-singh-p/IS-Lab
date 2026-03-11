@@ -1,6 +1,7 @@
 const express = require('express');
 const corsMiddleware = require('./middleware/cors');
 const errorHandler = require('./middleware/errorHandler');
+const uploadSignatureRoutes = require('./routes/uploadSignature');
 
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use('/health', healthRoutes);
 app.use('/auth', authRoutes);
 app.use('/sessions', requireAuth, requireRole('user'), sessionsRoutes);
+app.use('/upload-signature', requireAuth, requireRole('user'), uploadSignatureRoutes);
 app.use('/upload', requireAuth, requireRole('user'), uploadRoutes);
 app.use('/generate-questions', requireAuth, requireRole('user'), questionsRoutes);
 app.get('/admin/video/:id', requireAuthOrQueryToken, requireRole('admin'), serveVideo);
