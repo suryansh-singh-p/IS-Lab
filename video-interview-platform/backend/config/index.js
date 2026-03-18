@@ -1,7 +1,71 @@
 const path = require('path');
 const fs = require('fs');
 
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+function parseBoolean(value, defaultValue = false) {
+    if (value == null) return defaultValue;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return defaultValue;
+}
+
+function resolveExistingFile(filePath) {
+    if (!filePath || typeof filePath !== 'string') return null;
+    const normalized = path.normalize(filePath.trim());
+    return fs.existsSync(normalized) ? normalized : null;
+}
+
+function resolveScriptPath({ primaryEnv, secondaryEnv, fallbackPath, label }) {
+    const fromPrimary = resolveExistingFile(primaryEnv);
+    if (fromPrimary) return fromPrimary;
+
+    const fromSecondary = resolveExistingFile(secondaryEnv);
+    if (fromSecondary) return fromSecondary;
+
+    if ((primaryEnv && !fromPrimary) || (secondaryEnv && !fromSecondary)) {
+        console.warn(`[Config] ${label} env path not found. Falling back to bundled script.`);
+    }
+
+    const fallback = resolveExistingFile(fallbackPath);
+    if (fallback) return fallback;
+
+    console.warn(`[Config] ${label} script not found at fallback path: ${fallbackPath}`);
+    return null;
+}
+
+function parseCorsOrigins(value) {
+    if (!value || typeof value !== 'string') return [];
+    return value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+}
+
+const envCorsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN || process.env.CORS_ORIGINS);
+const defaultCorsOrigins = ['http://localhost:5173', 'http://localhost:3000'];
+const allowedCorsOrigins = envCorsOrigins.length > 0 ? envCorsOrigins : defaultCorsOrigins;
+
+const localWhisperScript = path.resolve(__dirname, '..', 'scripts', 'whisper_transcribe.py');
+const localDeepfaceScript = path.resolve(__dirname, '..', 'scripts', 'deepface_analyze.py');
+
+const whisperScriptPath = resolveScriptPath({
+    primaryEnv: process.env.WHISPER_SCRIPT_PATH,
+    secondaryEnv: process.env.WHISPERX_SCRIPT_PATH,
+    fallbackPath: localWhisperScript,
+    label: 'Whisper'
+});
+
+const emotionAnalysisEnabled = parseBoolean(process.env.EMOTION_ANALYSIS_ENABLED, true);
+const deepfaceScriptPath = emotionAnalysisEnabled
+    ? resolveScriptPath({
+        primaryEnv: process.env.DEEPFACE_SCRIPT_PATH,
+        secondaryEnv: null,
+        fallbackPath: localDeepfaceScript,
+        label: 'DeepFace'
+    })
+    : null;
+
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -23,48 +87,24 @@ const SEED_QUESTIONS = [
     "Is there anything about this job description that makes you nervous?"
 ];
 
-// Parse standard CLOUDINARY_URL, e.g.
-// CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
-let cloudinaryCloudName = null;
-let cloudinaryApiKey = null;
-let cloudinaryApiSecret = null;
-
-if (process.env.CLOUDINARY_URL) {
-    try {
-        const raw = process.env.CLOUDINARY_URL.replace(/^cloudinary:\/\//, 'http://');
-        const url = new URL(raw);
-        cloudinaryCloudName = url.hostname || null;
-        cloudinaryApiKey = url.username || null;
-        cloudinaryApiSecret = url.password || null;
-    } catch (e) {
-        console.error('Failed to parse CLOUDINARY_URL:', e.message);
-    }
-}
-
 module.exports = {
     port: process.env.PORT || 5000,
     databaseUrl: process.env.DATABASE_URL || null,
     jwtSecret: process.env.JWT_SECRET || 'video-interview-secret-change-in-production',
     openRouterApiKey: process.env.OPENROUTER_API_KEY,
     openaiApiKey: process.env.OPENAI_API_KEY || null,
-    whisperXScriptPath: process.env.WHISPERX_SCRIPT_PATH || path.resolve(__dirname, '..', 'scripts', 'whisper_transcribe.py'),
+    whisperScriptPath,
+    whisperXScriptPath: whisperScriptPath,
     useWhisperNode: process.env.USE_WHISPER_NODE === 'true',
-    deepfaceScriptPath: process.env.DEEPFACE_SCRIPT_PATH || path.join(__dirname, '..', 'scripts', 'deepface_analyze.py'),
+    emotionAnalysisEnabled,
+    deepfaceScriptPath,
     uploadsDir,
     evaluationsDir,
     uploadWatcherEnabled: process.env.UPLOAD_WATCHER !== 'false',
+    processPendingOnStartup: process.env.PROCESS_PENDING_ON_STARTUP !== 'false',
     SEED_QUESTIONS,
-    // Cloudinary configuration for signed direct uploads (from CLOUDINARY_URL).
-    cloudinaryCloudName,
-    cloudinaryApiKey,
-    cloudinaryApiSecret,
-    cloudinaryUploadFolder: process.env.CLOUDINARY_UPLOAD_FOLDER || 'interview-videos',
-    cloudinaryUploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || null,
-    // When true, /upload expects multipart video and writes to local disk.
-    // When false, /upload expects JSON metadata with a Cloudinary video URL.
-    useLocalVideoStorage: process.env.USE_LOCAL_VIDEO_STORAGE !== 'false',
     cors: {
-        origin: ['http://localhost:5173', 'http://localhost:3000'],
+        origin: allowedCorsOrigins,
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }

@@ -6,12 +6,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Admin from './pages/Admin';
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
-
-// Toggle between legacy local multipart upload vs signed Cloudinary upload.
-// Configure via Vite env: VITE_USE_LOCAL_VIDEO_UPLOAD = "true" | "false"
-const USE_LOCAL_VIDEO_UPLOAD =
-  (import.meta.env.VITE_USE_LOCAL_VIDEO_UPLOAD ?? 'true') === 'true';
+const API_URL = import.meta.env.VITE_API_URL;
 
 function getAuthHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -408,79 +403,6 @@ function App() {
     }
   }, [isRecording]);
 
-  // Helper: signed upload to Cloudinary (no local file storage).
-  const uploadToCloudinarySigned = useCallback(
-    async (blob, { questionId, interviewSessionId }) => {
-      // 1) Ask backend for a signed payload (no file bytes involved here).
-      const sigRes = await axios.post(
-        `${API_URL}/upload-signature`,
-        {
-          questionId,
-          session_id: interviewSessionId ?? null
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders(token)
-          }
-        }
-      );
-
-      if (!sigRes.data?.success || !sigRes.data?.data) {
-        throw new Error('Failed to obtain upload signature');
-      }
-
-      const {
-        cloudName,
-        apiKey,
-        timestamp,
-        signature,
-        folder,
-        publicId,
-        uploadPreset
-      } = sigRes.data.data;
-
-      if (!cloudName || !apiKey || !timestamp || !signature) {
-        throw new Error('Upload signature response missing required fields');
-      }
-
-      // 2) Upload directly from browser to Cloudinary using signed params.
-      const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
-      const formData = new FormData();
-      formData.append('file', blob);
-      formData.append('api_key', apiKey);
-      formData.append('timestamp', timestamp);
-      formData.append('signature', signature);
-      if (folder) formData.append('folder', folder);
-      if (publicId) formData.append('public_id', publicId);
-      if (uploadPreset) formData.append('upload_preset', uploadPreset);
-
-      const uploadRes = await axios.post(cloudinaryUrl, formData, {
-        onUploadProgress: (progressEvent) => {
-          if (!progressEvent.total) return;
-          const progress = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          setUploadProgress(progress);
-        }
-      });
-
-      const { secure_url: secureUrl, public_id: finalPublicId, duration } =
-        uploadRes.data || {};
-
-      if (!secureUrl) {
-        throw new Error('Cloudinary upload did not return a secure_url');
-      }
-
-      return {
-        secureUrl,
-        publicId: finalPublicId || publicId || null,
-        duration: duration ?? null
-      };
-    },
-    [token]
-  );
-
   const uploadVideo = useCallback(async () => {
     if (recordedChunks.length === 0) {
       setError('No recording to upload');
@@ -492,63 +414,29 @@ function App() {
     setError(null);
 
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const formData = new FormData();
+    formData.append('video', blob, `question-${currentQuestion.id}.webm`);
+    formData.append('questionId', currentQuestion.id.toString());
+    formData.append('questionText', currentQuestion.text);
+    if (interviewSessionId) {
+      formData.append('session_id', interviewSessionId);
+    }
 
     try {
-      let response;
-
-      if (true || USE_LOCAL_VIDEO_UPLOAD) {
-        // Legacy path: send multipart video file to backend (uses local disk storage).
-        const formData = new FormData();
-        formData.append('video', blob, `question-${currentQuestion.id}.webm`);
-        formData.append('questionId', currentQuestion.id.toString());
-        formData.append('questionText', currentQuestion.text);
-        if (interviewSessionId) {
-          formData.append('session_id', interviewSessionId);
+      const response = await axios.post(`${API_URL}/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...getAuthHeaders(token)
+        },
+        onUploadProgress: (progressEvent) => {
+          const progress = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          setUploadProgress(progress);
         }
+      });
 
-        response = await axios.post(`${API_URL}/upload`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            ...getAuthHeaders(token)
-          },
-          onUploadProgress: (progressEvent) => {
-            if (!progressEvent.total) return;
-            const progress = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            setUploadProgress(progress);
-          }
-        });
-      } else {
-        // New path: signed direct-to-Cloudinary upload, then lightweight metadata POST to backend.
-        const { secureUrl, publicId, duration } = await uploadToCloudinarySigned(
-          blob,
-          {
-            questionId: currentQuestion.id,
-            interviewSessionId
-          }
-        );
-
-        response = await axios.post(
-          `${API_URL}/upload`,
-          {
-            videoUrl: secureUrl,
-            publicId,
-            duration,
-            questionId: currentQuestion.id,
-            questionText: currentQuestion.text,
-            session_id: interviewSessionId ?? null
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              ...getAuthHeaders(token)
-            }
-          }
-        );
-      }
-
-      if (response?.data?.success) {
+      if (response.data.success) {
         if (response.data.data?.sessionId && !interviewSessionId) {
           setInterviewSessionId(response.data.data.sessionId);
         }
@@ -559,35 +447,21 @@ function App() {
         // Move to next question or complete interview
         setTimeout(() => {
           if (currentQuestionIndex < interviewQuestions.length - 1) {
-            setCurrentQuestionIndex((prev) => prev + 1);
+            setCurrentQuestionIndex(prev => prev + 1);
             setUploadSuccess(false);
             setShowQuestion(false); // Reset for next question
           } else {
             setInterviewComplete(true);
           }
         }, 1500);
-      } else {
-        throw new Error(
-          response?.data?.message || 'Upload failed. Please try again.'
-        );
       }
     } catch (err) {
       console.error('Upload error:', err);
-      const message =
-        err.response?.data?.message ||
-        err.message ||
-        'Upload failed. Please try again.';
-      setError(message);
+      setError(err.response?.data?.message || 'Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
     }
-  }, [
-    recordedChunks,
-    currentQuestion,
-    currentQuestionIndex,
-    interviewSessionId,
-    uploadToCloudinarySigned
-  ]);
+  }, [recordedChunks, currentQuestion, currentQuestionIndex, interviewSessionId]);
 
   const retakeRecording = () => {
     setRecordedChunks([]);

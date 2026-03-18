@@ -20,27 +20,102 @@ function toDbRelativePath(filePath) {
     return normalized;
 }
 
-/**
- * File-based pipeline for when DB is not configured.
- * Transcribes, evaluates, and saves JSON to candidate folder.
- */
-async function runFilePipeline(filePath) {
+function parseCandidateVideoMeta(filePath) {
     const filename = path.basename(filePath);
     const parentDir = path.dirname(filePath);
-    const parentName = path.basename(parentDir);
-
-    // Extract candidate name and question number from folder/filename
-    let candidateName = parentName;
-    let questionNum = 1;
-    let questionText = '';
-
-    // Try to parse question number from filename (e.g., CandidateName_Q1.webm)
     const stem = path.basename(filePath, path.extname(filePath));
+
+    let candidateName = path.basename(parentDir);
+    let questionNum = 1;
+
     const qMatch = stem.match(/_Q(\d+)$/i);
     if (qMatch) {
         questionNum = parseInt(qMatch[1], 10);
         candidateName = stem.replace(/_Q\d+$/i, '');
     }
+
+    return {
+        filename,
+        parentDir,
+        stem,
+        candidateName,
+        questionNum,
+        questionKey: `Q${questionNum}`
+    };
+}
+
+function updateAnswersFile(parentDir, candidateName, questionNum, questionText, transcriptText, filename, filePath) {
+    const answersFile = path.join(parentDir, `${candidateName}_answers.json`);
+    let answersData = {
+        candidate_name: candidateName,
+        updated_at: new Date().toISOString(),
+        answers: {}
+    };
+
+    if (fs.existsSync(answersFile)) {
+        try {
+            answersData = JSON.parse(fs.readFileSync(answersFile, 'utf-8'));
+        } catch (e) {
+            console.error('[FilePipeline] Failed to parse existing answers file:', e.message);
+        }
+    }
+
+    answersData.answers = answersData.answers || {};
+    answersData.answers[`Q${questionNum}`] = {
+        question: questionText || '',
+        transcript: transcriptText || '',
+        filename: filename || null,
+        file_path: filePath || null,
+        answered_at: new Date().toISOString()
+    };
+    answersData.updated_at = new Date().toISOString();
+
+    fs.writeFileSync(answersFile, JSON.stringify(answersData, null, 2), 'utf-8');
+    console.log(`[FilePipeline] Updated: ${answersFile}`);
+}
+
+function gatherVideoFiles(rootDir) {
+    const files = [];
+    if (!fs.existsSync(rootDir)) return files;
+
+    const stack = [rootDir];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        const entries = fs.readdirSync(current, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(fullPath);
+                continue;
+            }
+            if (entry.isFile() && isVideoFile(fullPath)) {
+                files.push(fullPath);
+            }
+        }
+    }
+
+    return files;
+}
+
+function isAlreadyEvaluatedInFileMode(filePath) {
+    const { parentDir, candidateName, questionKey } = parseCandidateVideoMeta(filePath);
+    const evalFile = path.join(parentDir, `${candidateName}_evaluation.json`);
+    if (!fs.existsSync(evalFile)) return false;
+    try {
+        const content = JSON.parse(fs.readFileSync(evalFile, 'utf-8'));
+        return !!content?.evaluations?.[questionKey];
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * File-based pipeline for when DB is not configured.
+ * Transcribes, evaluates, and saves JSON to candidate folder.
+ */
+async function runFilePipeline(filePath) {
+    const { filename, parentDir, candidateName, questionNum } = parseCandidateVideoMeta(filePath);
+    let questionText = '';
 
     // Load questions.json from candidate folder if exists
     const questionsFile = path.join(parentDir, 'questions.json');
@@ -80,6 +155,8 @@ async function runFilePipeline(filePath) {
         return;
     }
     console.log(`[FilePipeline] Transcript: ${transcriptText.length} chars`);
+
+    updateAnswersFile(parentDir, candidateName, questionNum, questionText, transcriptText, filename, filePath);
 
     let emotionData = null;
     if (emotionResult.status === 'fulfilled' && emotionResult.value) {
@@ -151,6 +228,32 @@ async function runFilePipeline(filePath) {
     console.log(`[FilePipeline] Saved: ${evalFile}`);
 }
 
+async function scanAndProcessUnprocessedFiles() {
+    if (db.pool) {
+        console.log('[UploadsWatcher] DB mode enabled — skipping file-mode startup scan');
+        return;
+    }
+
+    const videoFiles = gatherVideoFiles(config.uploadsDir);
+    if (videoFiles.length === 0) {
+        console.log('[UploadsWatcher] Startup scan: no video files found');
+        return;
+    }
+
+    console.log(`[UploadsWatcher] Startup scan found ${videoFiles.length} video file(s)`);
+
+    for (const filePath of videoFiles) {
+        if (isAlreadyEvaluatedInFileMode(filePath)) {
+            continue;
+        }
+        try {
+            await runFilePipeline(filePath);
+        } catch (err) {
+            console.error('[UploadsWatcher] Startup processing failed:', err.message);
+        }
+    }
+}
+
 function startUploadsWatcher() {
     if (!config.uploadWatcherEnabled) {
         console.log('[UploadsWatcher] Disabled by config (UPLOAD_WATCHER=false)');
@@ -220,4 +323,4 @@ function startUploadsWatcher() {
     return watcher;
 }
 
-module.exports = { startUploadsWatcher, runFilePipeline };
+module.exports = { startUploadsWatcher, runFilePipeline, scanAndProcessUnprocessedFiles };

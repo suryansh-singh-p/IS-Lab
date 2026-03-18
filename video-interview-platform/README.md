@@ -69,11 +69,15 @@ video-interview-platform/
    # Option A: OpenAI Whisper API
    # OPENAI_API_KEY=sk-...
 
-   # Option B: WhisperX script
-   # WHISPERX_SCRIPT_PATH=D:\IS Project\After_video\whisper_pipeline.py
+   # Option B: Whisper script (local Python)
+   # WHISPER_SCRIPT_PATH=/app/scripts/whisper_transcribe.py
+   # WHISPER_MODEL=tiny.en
 
-   # Option C: whisper-node (requires ffmpeg)
+   # Option C: whisper-node fallback (Linux/macOS recommended)
    # USE_WHISPER_NODE=true
+
+   # Optional emotion analysis (DeepFace). Set false on low-resource local machines.
+   # EMOTION_ANALYSIS_ENABLED=true
    ```
 
 4. Run migrations:
@@ -216,6 +220,39 @@ Questions can be easily customized in `App.jsx`.
 - CORS configured for specific origins only
 
 ## 📦 Production Deployment
+
+### Docker (recommended, standalone from this folder)
+
+This folder is deployable on its own.
+
+1. From `video-interview-platform`, create env files from examples:
+   ```bash
+   cp .env.example .env
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   ```
+
+2. Set production values:
+   - `backend/.env`: `JWT_SECRET`, `OPENROUTER_API_KEY` (if using evaluation), transcription option.
+   - `.env`: `CORS_ORIGIN` and (optionally) managed `DATABASE_URL`.
+
+3. Start all services:
+   ```bash
+   docker compose up --build -d
+   ```
+
+4. Check status/logs:
+   ```bash
+   docker compose ps
+   docker compose logs -f backend
+   ```
+
+Notes:
+- Frontend serves on `FRONTEND_PORT` (default `3000`) and proxies `/api` to backend.
+- Backend runs migrations at startup (`npm run migrate && npm run migrate:eval`).
+- Backend also auto-processes pending (DB mode) or unprocessed upload files (file mode) on startup; disable with `PROCESS_PENDING_ON_STARTUP=false`.
+- Default compose includes a Postgres container with persistent volume `postgres_data`.
+- To use managed Postgres (Neon/RDS), set `DATABASE_URL` in `.env` and `DATABASE_USE_SSL=true`.
 
 ### Frontend
 ```bash
