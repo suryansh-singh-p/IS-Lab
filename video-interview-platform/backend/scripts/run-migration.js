@@ -9,6 +9,18 @@ if (!databaseUrl) {
     process.exit(1);
 }
 
+function createPool(connectionString) {
+    const needsSsl =
+        process.env.DATABASE_USE_SSL === 'true' ||
+        process.env.PGSSLMODE === 'require' ||
+        (connectionString && connectionString.includes('neon.tech'));
+
+    return new Pool({
+        connectionString,
+        ssl: needsSsl ? { rejectUnauthorized: false } : undefined
+    });
+}
+
 const migrationPath = path.join(__dirname, '..', 'migrations', '20260204120000_create_initial_schema.sql');
 let sql = fs.readFileSync(migrationPath, 'utf8');
 sql = sql.split('\n').filter(line => !line.trim().startsWith('--')).join('\n');
@@ -25,7 +37,7 @@ const statements = beforeTrigger
 if (triggerBlock.trim()) statements.push(triggerBlock.trim());
 
 async function run() {
-    const pool = new Pool({ connectionString: databaseUrl });
+    const pool = createPool(databaseUrl);
     try {
         for (const statement of statements) {
             await pool.query(statement);
@@ -34,7 +46,8 @@ async function run() {
         }
         console.log('Migration completed successfully.');
     } catch (err) {
-        console.error('Migration failed:', err.message);
+        console.error('Migration failed:', err && (err.message || err.toString()) ? (err.message || err.toString()) : err);
+        if (err && err.stack) console.error(err.stack);
         process.exit(1);
     } finally {
         await pool.end();

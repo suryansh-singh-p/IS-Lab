@@ -1,11 +1,41 @@
 const { Pool } = require('pg');
 const config = require('../config');
 
+function createPool(connectionString) {
+    const needsSsl =
+        process.env.DATABASE_USE_SSL === 'true' ||
+        process.env.PGSSLMODE === 'require' ||
+        (connectionString && connectionString.includes('neon.tech'));
+
+    return new Pool({
+        connectionString,
+        ssl: needsSsl ? { rejectUnauthorized: false } : undefined
+    });
+}
+
 let pool = null;
 if (config.databaseUrl) {
-    pool = new Pool({ connectionString: config.databaseUrl });
+    pool = createPool(config.databaseUrl);
     pool.on('error', (err) => console.error('Postgres pool error:', err));
     console.log('PostgreSQL: connected (DATABASE_URL from env)');
+
+    // Ensure newer columns exist even if migrations weren't run.
+    // This is idempotent (IF NOT EXISTS) and prevents runtime crashes in the pipeline.
+    (async () => {
+        try {
+            await pool.query(
+                `ALTER TABLE session_videos
+                    ADD COLUMN IF NOT EXISTS transcript_text TEXT,
+                    ADD COLUMN IF NOT EXISTS answer_text TEXT,
+                    ADD COLUMN IF NOT EXISTS expected_expression TEXT,
+                    ADD COLUMN IF NOT EXISTS evaluation_json JSONB,
+                    ADD COLUMN IF NOT EXISTS score NUMERIC(4,2),
+                    ADD COLUMN IF NOT EXISTS evaluation_status VARCHAR(20) NOT NULL DEFAULT 'pending'`
+            );
+        } catch (err) {
+            console.error('PostgreSQL: failed ensuring evaluation columns:', err.message);
+        }
+    })();
 } else {
     console.log('PostgreSQL: DATABASE_URL not set, uploads will not be saved to DB');
 }

@@ -37,16 +37,32 @@ except ImportError:
     exit(1)
 
 # Load environment
-load_dotenv(dotenv_path=r"D:\IS Project\video-interview-platform\backend\.env")
+# Resolve paths relative to this repo so it works on any machine/path.
+REPO_ROOT = Path(__file__).resolve().parents[1]  # .../IS Lab
+BACKEND_DIR = REPO_ROOT / "video-interview-platform" / "backend"
+ENV_PATH = BACKEND_DIR / ".env"
+
+if ENV_PATH.exists():
+    load_dotenv(dotenv_path=ENV_PATH)
+else:
+    # Still allow running if user exports env vars in the shell.
+    print(f"⚠️ .env not found at: {ENV_PATH}")
 
 # Configuration
-UPLOADS_FOLDER = r"D:\IS Project\video-interview-platform\backend\uploads"
+UPLOADS_FOLDER = str(BACKEND_DIR / "uploads")
 WHISPER_MODEL_SIZE = "base"  # Options: tiny, base, small, medium, large
 
 # OpenRouter Client for LLM evaluation
+api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise SystemExit(
+        "Missing API key. Set OPENROUTER_API_KEY (preferred) or OPENAI_API_KEY.\n"
+        f"Looked for .env at: {ENV_PATH}"
+    )
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key=api_key,
 )
 
 # Store loaded questions per candidate

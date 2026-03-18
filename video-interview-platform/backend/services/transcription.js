@@ -55,9 +55,10 @@ async function transcribeWithOpenAIWhisper(filePath) {
 
 async function transcribeWithWhisperX(filePath) {
     return new Promise((resolve, reject) => {
-        // Use the venv Python if available
+        // Prefer venv (Windows dev), then system python3, then python
         const venvPython = path.join(__dirname, '..', 'venv', 'Scripts', 'python.exe');
-        const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python';
+        const pythonCmd = fs.existsSync(venvPython) ? venvPython
+            : (fs.existsSync('/usr/bin/python3') ? 'python3' : 'python');
         
         console.log('[Transcription] Using Python:', pythonCmd);
         console.log('[Transcription] Script:', config.whisperXScriptPath);

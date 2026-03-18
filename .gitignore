@@ -1,22 +1,43 @@
-# Python virtual environment
+# Python virtual environments
+.venv/
+venv/
 isp/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.pytest_cache/
 
 # Node
 node_modules/
-video-interview-platform/backend/node_modules/
-video-interview-platform/frontend/node_modules/
 
-# Environment files
+# Environment files — never commit secrets
 .env
-video-interview-platform/backend/.env
+.env.local
+.env.*.local
+# .env.example is safe to commit (no secrets)
 
-# Uploads & evaluations (user data)
+# Uploads & evaluations (user-generated data, not source)
 video-interview-platform/backend/uploads/*.webm
 video-interview-platform/backend/uploads/*.mp4
+video-interview-platform/backend/uploads/*.mkv
+video-interview-platform/backend/uploads/*_evaluation.json
 video-interview-platform/backend/uploads/evaluations/
+After_video/evaluations/
+
+# Python model caches (Whisper downloads models here)
+*.pt
+*.bin
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
 
 # OS
 .DS_Store
@@ -24,4 +45,9 @@ Thumbs.db
 
 # IDE
 .vscode/
+.idea/
 *.swp
+*.swo
+
+# Docker build cache
+.dockerignore

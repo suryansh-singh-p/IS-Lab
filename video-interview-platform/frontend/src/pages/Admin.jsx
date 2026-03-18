@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Video, User, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL;
 
 function getAuthHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
