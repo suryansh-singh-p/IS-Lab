@@ -24,6 +24,7 @@ const SEED_QUESTIONS = [
 ];
 
 module.exports = {
+    
     port: process.env.PORT || 5000,
     databaseUrl: process.env.DATABASE_URL || null,
     jwtSecret: process.env.JWT_SECRET || 'video-interview-secret-change-in-production',
