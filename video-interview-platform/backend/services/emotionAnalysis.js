@@ -61,28 +61,48 @@ function runDeepFaceScript(filePath, scriptPath) {
 
         py.on('close', (code) => {
             clearTimeout(timer);
-            // Try parsing stdout first — TensorFlow prints warnings to stderr
-            // which can cause non-zero exit codes in some shells even on success
+            // Parse stdout robustly: DeepFace/tensorflow/opencv can emit noise around JSON.
             const trimmed = stdout.trim();
+            let parsed = null;
             if (trimmed) {
                 try {
-                    const result = JSON.parse(trimmed);
-                    if (result.error) {
-                        reject(new Error('DeepFace error: ' + result.error));
-                        return;
+                    parsed = JSON.parse(trimmed);
+                } catch (_) {
+                    // Try extracting a JSON object from mixed output.
+                    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        try {
+                            parsed = JSON.parse(jsonMatch[0]);
+                        } catch (_) {
+                            parsed = null;
+                        }
                     }
-                    console.log('[EmotionAnalysis] Done — analyzed', result.analyzed_frames, 'frames,', result.faces_detected, 'faces detected');
-                    resolve(result);
-                    return;
-                } catch (e) {
-                    // Not valid JSON, fall through to error handling
                 }
             }
+
+            if (parsed) {
+                if (parsed.error) {
+                    reject(new Error('DeepFace error: ' + parsed.error));
+                    return;
+                }
+                console.log('[EmotionAnalysis] Done — analyzed', parsed.analyzed_frames, 'frames,', parsed.faces_detected, 'faces detected');
+                resolve(parsed);
+                return;
+            }
+
             if (code !== 0) {
                 reject(new Error('DeepFace script failed (exit ' + code + '): ' + (stderr || stdout).slice(0, 500)));
                 return;
             }
-            reject(new Error('DeepFace produced no output'));
+
+            // Exit code is 0 but parse still failed — provide actionable diagnostics.
+            const stdoutHead = trimmed.slice(0, 300);
+            const stderrTail = (stderr || '').slice(-300);
+            reject(new Error(
+                'DeepFace produced non-JSON output. ' +
+                'stdout_head="' + stdoutHead + '" ' +
+                'stderr_tail="' + stderrTail + '"'
+            ));
         });
 
         py.on('error', (err) => {

@@ -1,7 +1,7 @@
 const express = require('express');
 const pdfParse = require('pdf-parse');
 const config = require('../config');
-const openai = require('../services/openai');
+const openai = require('../services/llm');
 const { uploadPdf } = require('../middleware/upload');
 
 const router = express.Router();
@@ -29,7 +29,7 @@ router.post('/', uploadPdf.single('resume'), async (req, res) => {
             `Output ONLY valid JSON in this exact format: {"questions": [{"id": 1, "text": "question text here"}, {"id": 2, "text": "question text here"}, ...]}`;
 
         const response = await openai.chat.completions.create({
-            model: 'nvidia/nemotron-nano-9b-v2:free',
+            model: config.llmModel,
             messages: [
                 { role: 'system', content: 'You are a recruitment assistant. Output ONLY valid JSON with no additional text or markdown.' },
                 { role: 'user', content: prompt }
@@ -37,6 +37,7 @@ router.post('/', uploadPdf.single('resume'), async (req, res) => {
         });
 
         const generatedContent = response.choices[0].message.content;
+        console.log('[Questions] Raw LLM response:', generatedContent);
         console.log('✓ Generated personalized questions');
 
         let questions;

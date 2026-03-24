@@ -16,9 +16,14 @@ WORKDIR /app
 RUN pip3 install --no-cache-dir --break-system-packages \
     torch --index-url https://download.pytorch.org/whl/cpu
 
-# Install remaining Python deps (torch is already satisfied, CUDA skipped)
+# Install CPU-only TensorFlow before deepface to avoid the 572 MB GPU wheel
+RUN pip3 install --no-cache-dir --break-system-packages \
+    --default-timeout=300 tensorflow-cpu
+
+# Install remaining Python deps (torch + tf already satisfied)
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages \
+    --default-timeout=300 -r requirements.txt
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev

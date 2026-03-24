@@ -36,6 +36,11 @@ module.exports = {
     evaluationsDir,
     uploadWatcherEnabled: process.env.UPLOAD_WATCHER !== 'false',
     SEED_QUESTIONS,
+    // LLM provider config — set LLM_PROVIDER=ollama for local, openrouter/openai for cloud
+    llmProvider: process.env.LLM_PROVIDER || 'ollama',
+    llmBaseUrl: process.env.LLM_BASE_URL || 'http://ollama:11434/v1',
+    llmModel: process.env.LLM_MODEL || 'llama3.2:3b',
+    llmApiKey: process.env.LLM_API_KEY || 'ollama',
     cors: {
         origin: ['http://localhost:5173', 'http://localhost:3000'],
         methods: ['GET', 'POST'],

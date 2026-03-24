@@ -1,3 +1,4 @@
 openai-whisper
 opencv-python-headless
 deepface
+tf-keras

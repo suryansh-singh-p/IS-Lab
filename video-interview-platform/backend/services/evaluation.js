@@ -1,4 +1,5 @@
-const openai = require('./openai');
+const openai = require('./llm');
+const config = require('../config');
 
 /**
  * Evaluate a candidate's answer using the interview question and transcript.
@@ -27,7 +28,7 @@ Output ONLY this JSON (no code block, no explanation):
 
     console.log('[Evaluation] Calling LLM...');
     const response = await openai.chat.completions.create({
-        model: 'nvidia/nemotron-nano-9b-v2:free',
+        model: config.llmModel,
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
@@ -135,7 +136,7 @@ Output ONLY this JSON (no code block, no explanation):
 
     console.log('[EmotionEval] Calling LLM...');
     const response = await openai.chat.completions.create({
-        model: 'nvidia/nemotron-nano-9b-v2:free',
+        model: config.llmModel,
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
