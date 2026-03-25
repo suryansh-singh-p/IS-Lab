@@ -1,7 +1,10 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-const { Pool } = require('pg');
+const { Pool, neonConfig } = require('@neondatabase/serverless');
+const ws = require('ws');
 const fs = require('fs');
 const path = require('path');
+
+neonConfig.webSocketConstructor = ws;
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -10,15 +13,7 @@ if (!databaseUrl) {
 }
 
 function createPool(connectionString) {
-    const needsSsl =
-        process.env.DATABASE_USE_SSL === 'true' ||
-        process.env.PGSSLMODE === 'require' ||
-        (connectionString && connectionString.includes('neon.tech'));
-
-    return new Pool({
-        connectionString,
-        ssl: needsSsl ? { rejectUnauthorized: false } : undefined
-    });
+    return new Pool({ connectionString });
 }
 
 const migrationPath = path.join(__dirname, '..', 'migrations', '20260204120000_create_initial_schema.sql');

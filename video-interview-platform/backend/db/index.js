@@ -1,16 +1,12 @@
-const { Pool } = require('pg');
+const { Pool, neonConfig } = require('@neondatabase/serverless');
+const ws = require('ws');
 const config = require('../config');
 
-function createPool(connectionString) {
-    const needsSsl =
-        process.env.DATABASE_USE_SSL === 'true' ||
-        process.env.PGSSLMODE === 'require' ||
-        (connectionString && connectionString.includes('neon.tech'));
+// Required for Node.js environments (non-edge runtimes)
+neonConfig.webSocketConstructor = ws;
 
-    return new Pool({
-        connectionString,
-        ssl: needsSsl ? { rejectUnauthorized: false } : undefined
-    });
+function createPool(connectionString) {
+    return new Pool({ connectionString });
 }
 
 let pool = null;

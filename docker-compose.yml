@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    image: suryansh180704/islab:backend1.0  # <- CHANGED: Replaced 'build' with your Docker Hub image
+    image: suryansh180704/islab:backend1.1
     env_file:
       - .env  # <- CHANGED: Updated to point to the .env file in your current folder
     environment:
@@ -28,9 +28,10 @@ services:
       - ollama
 
   frontend:
-    image: suryansh180704/islab:frontend1.0 # <- CHANGED: Replaced 'build' with your Docker Hub image
+    image: suryansh180704/islab:frontend1.1
     ports:
       - "${FRONTEND_PORT:-3020}:80"
+      - "${FRONTEND_HTTPS_PORT:-3021}:443"
     depends_on:
       - backend
 

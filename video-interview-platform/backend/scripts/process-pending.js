@@ -1,9 +1,11 @@
 require('dotenv').config();
 const path = require('path');
-const { Pool } = require('pg');
+const { Pool, neonConfig } = require('@neondatabase/serverless');
+const ws = require('ws');
 const config = require('../config');
 const { runPipeline } = require('../services/videoEvaluationPipeline');
 
+neonConfig.webSocketConstructor = ws;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function processPendingVideos() {
